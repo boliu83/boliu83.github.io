@@ -12,7 +12,7 @@
 
 
 
-## Official installation documentation
+## Official Documentation
 
 Installing IBM Spectrum Scale on Linux nodes https://www.ibm.com/support/knowledgecenter/STXKQY_5.0.4/com.ibm.spectrum.scale.v5r04.doc/bl1ins_loosein.htm
 
@@ -20,7 +20,7 @@ Installing IBM Spectrum Scale on Linux nodes https://www.ibm.com/support/knowled
 
 ## Pre-requisites
 
-1. CentOS 7 Server with 2 CPU, 8 GB RAM and 50GB OS disk
+1. Create CentOS 7 Server with 2 CPU, 8 GB RAM and 50GB OS disk
    ```
    name=scale01
    cpu=2
@@ -80,6 +80,8 @@ Installing IBM Spectrum Scale on Linux nodes https://www.ibm.com/support/knowled
 
 ## Steps
 
+### Spectrum Scale and GUI installation
+
 1. Update OS and reboot
 
    ```bash
@@ -98,8 +100,6 @@ Installing IBM Spectrum Scale on Linux nodes https://www.ibm.com/support/knowled
    net.ipv4.tcp_rmem = 4096 262144 8388608
    net.ipv4.tcp_wmem = 4096 262144 8388608
    ```
-
-   
 
 4. Install the dependencies
 
@@ -208,6 +208,101 @@ Installing IBM Spectrum Scale on Linux nodes https://www.ibm.com/support/knowled
    mmount
    ```
 
-   d. verify 
+   d. verify mount point by running `df -h` command
+
+10. Access GUI
+    a. create GUI user
+
+    ```
+    # /usr/lpp/mmfs/gui/cli/mkuser admin -g SecurityAdmin
+    EFSSG1007A Enter password for User :
+    ```
+
+    b. Access GUI by pointing your browser to `https://<scale_server_ip>`
+    ![scale_gui](./files/scale_gui.png)
+
+
+### Enabling CES (Cluster Export Services) [Ref](https://www.ibm.com/support/knowledgecenter/STXKQY_5.0.4/com.ibm.spectrum.scale.v5r04.doc/bl1ins_manuallyinstallingonlinux_CES.htm)
+
+1. Seting up CES shared root filesystem
+
+   ```
+   mmchconfig cesShareRoot=/gpfs/fs01
+   ```
+
+2. Add server as CES node
+
+   ```
+   mmchnode -N scale01.homelab.net --ces-enable
+   ```
+
+   verify result
+
+   ```
+   mmces node list
+   mmlscluster --ces
+   ```
+
+3. Add CES IP. **Note**, the CES IP address must has reverse lookup record (i.e. PTR record) in DNS
+
+   ```
+   mmces address add --ces-ip 192.168.122.10
+   ```
+
+### Enabling NFS service
+
+1. Install NFS packages and enable NFS service
+
+   ```
+   # yum localinstall -y /usr/lpp/mmfs/5.0.4.0/ganesha_rpms/rhel7/*rpm
+   
+   # mmces service enable NFS
+   scale01.homelab.net:  Redirecting to /bin/systemctl start nfs-ganesha.service
+   scale01.homelab.net:  Warning: nfs-ganesha.service changed on disk. Run 'systemctl daemon-reload' to reload units.
+   scale01.homelab.net:  NFS: service succesfully started.
+   mmchconfig: Command successfully completed
+   mmchconfig: mmsdrfs propagation completed.
+   
+   ```
 
    
+
+2. Install NFS performance monitoring [Ref](https://www.ibm.com/support/knowledgecenter/STXKQY_5.0.4/com.ibm.spectrum.scale.v5r04.doc/bl1ins_manualinstallationofPMTl.htm)
+
+   ```
+   yum localinstall -y /usr/lpp/mmfs/5.0.4.0/zimon_rpms/rhel7/gpfs.pm-ganesha-10.0.0-1.el7.x86_64.rpm
+   ```
+
+   create `/opt/IBM/zimon/defaults/ZIMonSensors_nfs.cfg` with content below
+
+   ```
+   sensors={
+           name = "NFSIO"
+           period = 10
+           type = "Generic"
+           restrict = "cesNodes"
+   }
+   ```
+
+   add sensor
+
+   ```
+   mmperfmon config add --sensors /opt/IBM/zimon/defaults/ZIMonSensors_nfs.cfg
+   ```
+
+   add sensor to system
+
+   ```
+   mmhealth node show nfs --refresh
+   ```
+
+3. Create File Authentication Service in **GUI** under **Serviecs** > **File Authentication**. Create service as 'user-defined'
+
+   ```
+   # or from CLI
+   mmuserauth service create --data-access-method 'file' --type 'USERDEFINED'
+   ```
+
+4. Create fileset for NFS export in GUI under **Files** > **Filesets**
+
+5. Create NFS export in GUI under **Protocols** > **Create Export**. If you encounter a GUI bug which doesn't allow you to add NFS clients, you need to reboot server and try again. 
