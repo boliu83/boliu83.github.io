@@ -254,19 +254,12 @@ Installing IBM Spectrum Scale on Linux nodes https://www.ibm.com/support/knowled
 1. Install NFS packages and enable NFS service
 
    ```
-   # yum localinstall -y /usr/lpp/mmfs/5.0.4.0/ganesha_rpms/rhel7/*rpm
-   
-   # mmces service enable NFS
-   scale01.homelab.net:  Redirecting to /bin/systemctl start nfs-ganesha.service
-   scale01.homelab.net:  Warning: nfs-ganesha.service changed on disk. Run 'systemctl daemon-reload' to reload units.
-   scale01.homelab.net:  NFS: service succesfully started.
-   mmchconfig: Command successfully completed
-   mmchconfig: mmsdrfs propagation completed.
-   
+   yum localinstall -y /usr/lpp/mmfs/5.0.4.0/ganesha_rpms/rhel7/*rpm
+   mmces service enable NFS
    ```
-
    
-
+   
+   
 2. Install NFS performance monitoring [Ref](https://www.ibm.com/support/knowledgecenter/STXKQY_5.0.4/com.ibm.spectrum.scale.v5r04.doc/bl1ins_manualinstallationofPMTl.htm)
 
    ```
