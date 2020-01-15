@@ -13,30 +13,33 @@ https://github.com/IBM/ibm-spectrum-scale-csi-operator
 
 ### Spectrum Scale and GUI installation
 
-1. Prepare all worker nodes 
+1. Prepare all k8s worker nodes 
 
    ```
    # install Spectrum scale dependencies on all worker nodes
    yum install -y gcc kernel-devel kernel-headers \
     kernel m4 gcc-c++ ksh numactl net-tools \
-    openldap-clients python-xml
+    openldap-clients python-xml git
    ```
 
    create /etc/sysctl.d/99-spectrum.conf with content below.  [Reference](https://www.ibm.com/support/knowledgecenter/STXKQY_5.0.4/com.ibm.spectrum.scale.v5r04.doc/bl1ins_netperf.htm)
 
    ```
+   [root@worker01]# cat > /etc/sysctl.d/99-spectrum.conf <<EOF
    # increase Linux TCP buffer limits
    net.core.rmem_max = 8388608
    net.core.wmem_max = 8388608
    # increase default and maximum Linux TCP buffer sizes
    net.ipv4.tcp_rmem = 4096 262144 8388608
    net.ipv4.tcp_wmem = 4096 262144 8388608
+   EOF
+   
+   [root@worker01]# sysctl -p /etc/sysctl.d/99-spectrum.conf
    ```
 
-2. Add all worker nodes to spectrum scale cluster
+2. From Spectrum Scale admin node, add all worker nodes to spectrum scale cluster
 
    ```
-   # run all commands from Spectrum Scale admin node
    # /usr/lpp/mmfs/<version>/installer
    
    ./spectrumscale node add worker01.homelab.net
@@ -57,7 +60,6 @@ https://github.com/IBM/ibm-spectrum-scale-csi-operator
    docker pull boliu83/ibm-spectrum-scale-csi:v1.0.0
    docker tag boliu83/ibm-spectrum-scale-csi:v1.0.0 ibm-spectrum-scale-csi:v1.0.0
    
-   docker pull boliu83/ibm-spectrum-scale-csi-operator:v0.9.1
    ```
 
 5. Deploy operator
@@ -65,11 +67,9 @@ https://github.com/IBM/ibm-spectrum-scale-csi-operator
    ```bash
    # master node
    [root@master01 ~]# git clone https://github.com/IBM/ibm-spectrum-scale-csi-operator.git
+   [root@master01 ~]# git clone https://github.com/IBM/ibm-spectrum-scale-csi-driver.git
    
    [root@master01 ~]# cd ./ibm-spectrum-scale-csi-operator/stable/ibm-spectrum-scale-csi-operator-bundle/operators/ibm-spectrum-scale-csi-operator/
-   
-   # Update your deployment to point at the operator image
-   [root@master01 ibm-spectrum-scale-csi-operator]# ./hacks/change_deploy_image.py -i boliu83/ibm-spectrum-scale-csi-operator:v0.9.1
    
    # run commands below to manually deploy operator
    [root@master01 ibm-spectrum-scale-csi-operator]# kubectl apply -f deploy/namespace.yaml
@@ -111,20 +111,21 @@ https://github.com/IBM/ibm-spectrum-scale-csi-operator
    kind: Secret
    metadata:
      name: guisecret
+     namespace: ibm-spectrum-scale-csi-driver
      labels:
        product: ibm-spectrum-scale-csi
    data:
      username: <base64_encoded_username>
      password: <base64_encoded_password>
-   ```
-
-   create secrets
-
+```
+   
+create secrets
+   
    ```bash
    [root@master01 ibm-spectrum-scale-csi-operator]# kubectl apply -f secrets.yaml -n ibm-spectrum-scale-csi-driver
    secret/guisecret created
-   ```
-
+```
+   
 7. Obtaining Spectrum Scale cluster id
 
    ```
@@ -169,7 +170,7 @@ https://github.com/IBM/ibm-spectrum-scale-csi-operator
 10. Start CSI plugin
 
     ```
-    kubectl apply -f 
+    kubectl apply -f deploy/crds/ibm-spectrum-scale-csi-operator-cr.yaml
     ```
 
     check progress
@@ -191,17 +192,20 @@ https://github.com/IBM/ibm-spectrum-scale-csi-operator
 
 1. Create storage class named `ibm-spectrum-scale-csi-lt`
 
-   ```bash
+   ```yaml
    
    [root@master01 ~]# cat > storageclass.yaml <<EOF
    apiVersion: storage.k8s.io/v1
    kind: StorageClass
    metadata:
-      name: ibm-spectrum-scale-csi-lt
+     name: ibm-spectrum-scale-csi-lt
+     namespace: ibm-spectrum-scale-csi-driver
+     annotations:
+       storageclass.kubernetes.io/is-default-class: "true"
    provisioner: spectrumscale.csi.ibm.com
    parameters:
-       volBackendFs: "fs01"
-       volDirBasePath: "csi"
+      volBackendFs: "fs01"
+      volDirBasePath: "csi"
    reclaimPolicy: Delete
    EOF
    
@@ -209,7 +213,7 @@ https://github.com/IBM/ibm-spectrum-scale-csi-operator
    storageclass.storage.k8s.io/ibm-spectrum-scale-csi-lt created
    ```
 
-2. Create PVC
+2. Create PVC and test
 
    ```bash
    [root@master01 ~]# cat > pvc.yaml <<EOF
@@ -237,7 +241,90 @@ https://github.com/IBM/ibm-spectrum-scale-csi-operator
    [root@scale01 csi]# ls -l /gpfs/fs01/csi/
    total 1
    drwxrwx--x. 2 root root 4096 Jan 13 09:40 pvc-d7a273e8-15af-4970-a253-8cc3a30868f1
+   
+kubectl run nginx-test --image nginx --replicas 2 --port 80
+   
+   kubectl edit deployment.apps/nginx-test
+   
+   #######
+     spec:
+       containers:
+         - image: nginx
+           volumeMounts:
+             - mountPath: /usr/share/nginx/html
+               name: data
+       volumes:
+         - name: data
+           persistentVolumeClaim:
+             claimName: scale-lt-pvc
+   #######
+   deployment.apps/nginx-test edited
+   
+   
+   [root@master01 ibm-spectrum-scale-csi-operator]# kubectl get pods
+   NAME                          READY   STATUS        RESTARTS   AGE
+   nginx-test-66f549d84-749cd    1/1     Running       0          8s
+   nginx-test-66f549d84-mjvwq    1/1     Running       0          22s
+   nginx-test-86bdc44976-5l4g4   0/1     Terminating   0          96s
+   nginx-test-86bdc44976-w4cv9   0/1     Terminating   0          96s
+   
+   [root@master01 ibm-spectrum-scale-csi-operator]# kubectl describe pod/nginx-test-66f549d84-mjvwq
+   Name:           nginx-test-66f549d84-mjvwq
+   Namespace:      default
+   Priority:       0
+   Node:           worker01.homelab.net/192.168.122.111
+   Start Time:     Tue, 14 Jan 2020 23:26:02 +0000
+   Labels:         pod-template-hash=66f549d84
+                   run=nginx-test
+   Annotations:    <none>
+   Status:         Running
+   IP:             10.44.0.7
+   Controlled By:  ReplicaSet/nginx-test-66f549d84
+   Containers:
+     nginx-test:
+       Container ID:   docker://3d23c7ba89bce529c7341f267c69c91edb6bcb63999ed29c373666d52315f913
+       Image:          nginx
+       Image ID:       docker-pullable://nginx@sha256:8aa7f6a9585d908a63e5e418dc5d14ae7467d2e36e1ab4f0d8f9d059a3d071ce
+       Port:           80/TCP
+       Host Port:      0/TCP
+       State:          Running
+         Started:      Tue, 14 Jan 2020 23:26:16 +0000
+       Ready:          True
+       Restart Count:  0
+       Environment:    <none>
+       Mounts:
+         /usr/share/nginx/html from data (rw)
+         /var/run/secrets/kubernetes.io/serviceaccount from default-token-j9djk (ro)
+   Conditions:
+     Type              Status
+     Initialized       True
+     Ready             True
+     ContainersReady   True
+     PodScheduled      True
+   Volumes:
+     data:
+       Type:       PersistentVolumeClaim (a reference to a PersistentVolumeClaim in the same namespace)
+       ClaimName:  scale-lt-pvc
+       ReadOnly:   false
+     default-token-j9djk:
+       Type:        Secret (a volume populated by a Secret)
+       SecretName:  default-token-j9djk
+       Optional:    false
+   QoS Class:       BestEffort
+   Node-Selectors:  <none>
+   Tolerations:     node.kubernetes.io/not-ready:NoExecute for 300s
+                    node.kubernetes.io/unreachable:NoExecute for 300s
+   Events:
+     Type    Reason                  Age   From                           Message
+     ----    ------                  ----  ----                           -------
+     Normal  Scheduled               19s   default-scheduler              Successfully assigned default/nginx-test-66f549d84-mjvwq to worker01.homelab.net
+     Normal  SuccessfulAttachVolume  19s   attachdetach-controller        AttachVolume.Attach succeeded for volume "pvc-bd12f631-688c-413d-99c4-d57fd724b493"
+     Normal  Pulling                 10s   kubelet, worker01.homelab.net  Pulling image "nginx"
+     Normal  Pulled                  6s    kubelet, worker01.homelab.net  Successfully pulled image "nginx"
+     Normal  Created                 6s    kubelet, worker01.homelab.net  Created container nginx-test
+     Normal  Started                 5s    kubelet, worker01.homelab.net  Started container nginx-test
+   
    ```
-
+   
    
 
