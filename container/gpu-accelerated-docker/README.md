@@ -12,6 +12,7 @@ sudo yum-config-manager --add-repo http://developer.download.nvidia.com/compute/
 sudo yum clean all
 sudo yum -y install nvidia-driver-latest-dkms cuda
 sudo yum -y install cuda-drivers
+sudo reboot
 ```
 
 ## Install NVIDIA container runtime
