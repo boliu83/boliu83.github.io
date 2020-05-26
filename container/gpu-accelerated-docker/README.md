@@ -7,7 +7,14 @@ https://github.com/NVIDIA/nvidia-docker
 1. Docker 19.03+
 2. Install NVIDIA driver
 
-## 3. Install NVIDIA container runtime
+```bash
+sudo yum-config-manager --add-repo http://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo
+sudo yum clean all
+sudo yum -y install nvidia-driver-latest-dkms cuda
+sudo yum -y install cuda-drivers
+```
+
+## Install NVIDIA container runtime
 
 ```bash
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
