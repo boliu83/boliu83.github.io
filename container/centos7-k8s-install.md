@@ -119,7 +119,7 @@ kube-system   kube-scheduler-master            1/1     Running   0          7m35
 
 ## Worker node configuration
 
-Perform Kubeadm - common tasks
+Perform **Kubeadm - common** tasks
 
 Run `kubeadm join` command saved from master node
 
