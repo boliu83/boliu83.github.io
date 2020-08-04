@@ -119,6 +119,28 @@ mdadm --create --verbose /dev/md0 --level=5 --raid-devices=3 /dev/sdb /dev/sdc /
       Array State : AA ('A' == active, '.' == missing, 'R' == replacing)
    ```
 
+**add extra disk to array**
+
+https://zackreed.me/adding-an-extra-disk-to-an-mdadm-array/
+
+```shell
+# add disk as host spare
+# you can check its status with 'cat /proc/mdstat'
+mdadm --add /dev/md0 /dev/sdd
+
+# grow array to new disk
+# raid-devices = <total_number_of_disks_including_new>
+mdadm --grow /dev/md0 --raid-devices=4
+
+# (optional) check filesystem
+xfs_repair /dev/md0
+
+# expand filesystesm
+
+
+```
+
+
 **Save mdadm configuration**
 
 The /etc/mdadm.conf file is used to identify which devices are RAID devices and to which array a specific device belongs. This is required to auto-build your RAID devices at boot.
